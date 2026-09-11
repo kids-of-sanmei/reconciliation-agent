@@ -6,8 +6,11 @@ app.include_router(api_router)
 
 @app.middleware("http")
 async def add_process_time_header(request, call_next) -> None:
+    print("开始")
     response = await call_next(request)
+    print("结束")
     return response
+
 
 @app.get("/") 
 def read_root():
