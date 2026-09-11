@@ -1,0 +1,7 @@
+from fastapi import APIRouter
+
+router = APIRouter(prefix="/demo")
+
+@router.get("/")
+async def demo_endpoint():
+    return {"message": "Hello from demo endpoint"}
