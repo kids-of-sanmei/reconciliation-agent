@@ -1,0 +1,14 @@
+﻿OK  langgraph 
+OK  langchain 1.4.0
+OK  langchain_core 1.6.2
+OK  langchain_openai 1.6.2
+OK  langchain_community 0.4.2
+OK  langgraph.checkpoint.sqlite 
+OK  langchain_mcp_adapters 
+OK  dotenv 
+OK  pydantic_settings 2.15.0
+OK  httpx 0.28.1
+OK  aiofiles 
+OK  tiktoken 0.14.0
+python 3.13.5
+
