@@ -1,0 +1,3 @@
+# 本练习复用 backend/pyproject.toml 中的依赖：
+# sqlalchemy>=2.0.52
+# aiomysql>=0.3.2

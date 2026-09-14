@@ -14,7 +14,7 @@ async def add_process_time_header(request, call_next) -> None:
     print("结束")
     return response
 
-engine_url = "mysql+aiomysql://root:123456@127.0.0.1:3306/app?charset=utf8"
+engine_url = "mysql+aiomysql://root:123456@192.168.0.229:3306/exc?charset=utf8"
 async_demo = create_async_engine(
     url= engine_url,
     echo=True, # 输出日志
