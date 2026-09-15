@@ -4,72 +4,107 @@ import asyncio
 import os
 import uuid
 from typing import Sequence # 表示“按顺序排列的一组元素”
+
+from Tools.scripts.summarize_stats import pre_succ_pairs_section
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine, AsyncSession
-from sqlalchemy.engine import Result
+from sqlalchemy.engine import Result, RowMapping
 from backend.app.model.user import User
 
 
-DATABASE_URL = "mysql+aiomysql://root:123456@192.168.0.229:3306/exc?charset=utf8mb4",
+DATABASE_URL = "mysql+aiomysql://root:123456@192.168.0.229:3306/exc?charset=utf8mb4"
 
 
 async def main() -> None:
-    engine = create_async_engine(
+    async_engine = create_async_engine(
         DATABASE_URL,
         echo=True,
         pool_size=10,
         max_overflow=20
     )
 
-    # TODO 1：使用 async_sessionmaker 创建会话工厂 SessionLocal。
-    SessionLocal = async_sessionmaker(
-        bind = engine,
+    # TODO 1：使用 async_sessionmaker 创建会话工厂 async_session_factory。
+    async_session_factory = async_sessionmaker(
+        bind = async_engine,
         class_=AsyncSession,
         expire_on_commit=False, # 事务提交后对象属性是否失效
     )
 
-    test_name = f"practice_{uuid.uuid4().hex[:8]}"
+    unique_test_name = f"practice_{uuid.uuid4().hex[:8]}"
 
     try:
-        # TODO 2：用 async with SessionLocal() as session 创建会话。
-        # 以下全部操作都放在同一个会话代码块中。
-
-        # CREATE：创建 User(name=test_name, role="viewer")，add、commit、refresh。
-        # 保存生成的 user.id，并打印新增结果。
-
-        # READ：执行 select(User).where(User.id == user_id)。
-        user_id:int = 1
-        user_name:str = "A"
-        async with SessionLocal() as session:
-            result: Result[tuple[User]] = await session.execute(
-                select(User).where(User.id == user_id)
-            )
-            result2: User | None = await session.get(User, user_id)
-            users: Sequence[User] = result.scalars().all()
-        # 使用 scalar_one_or_none() 取得对象并打印。
-            user_one: User | None = result.scalar_one_or_none()
-
-        """更新操作"""
-        # UPDATE：把查询到的用户 role 改为 "admin"，然后 commit、refresh 并打印。
-        async with SessionLocal() as session:
-            result: Result[tuple[User]] = await session.execute(
-                select(User).where(User.name == user_name)
-            )
-            users = result.scalars().all()
-            for user in users:
-                user.name = user_name + "B"
-
+        # TODO 2：用 async with async_session_factory() as db_session 创建会话。
+        """增加操作"""
+        async with async_session_factory() as session:
+            user_add = User(name="byj", role="admin")
+            session.add(user_add)
             await session.commit()
 
-        # DELETE：调用 await session.delete(user)，然后 commit。
+        """查询操作"""
+        target_user_id:int = 1
+        target_user_name:str = "A"
+        # TODO 2.1: 条件查询操作
+        async with async_session_factory() as db_session:
+            id_query_result: Result[tuple[User]] = await db_session.execute(
+                select(User).where(User.id == target_user_id)
+            )
+            user_by_id: User | None = await db_session.get(User, target_user_id)
+            """scalars()只取每一行的第一列"""
+            queried_users: Sequence[User] = id_query_result.scalars().all()
+        # 使用 scalar_one_or_none() 取得对象并打印。
+            single_user: User | None = id_query_result.scalar_one_or_none()
 
-        # VERIFY：再次按 ID 查询并断言结果是 None。
-        # print("删除后查询结果:", deleted_user)
-        # assert deleted_user is None
-        # print("CRUD 练习通过")
+        # TODO 2.2: 模糊条件查询
+        async with async_session_factory() as like_session:
+            like_select = select(User).where(User.name.like("%b%"))
+            like_result = (await like_session.execute(like_select)).scalars().all()
+
+        # TODO 2.3: 聚合查询
+        async with async_session_factory() as func_session:
+            pass
+
+        # TODO 2.4: 分页查询
+        async with async_session_factory() as limit_session:
+            pass
+        
+        """更新操作"""
+        async with async_session_factory() as db_session:
+            name_query_result: Result[tuple[User]] = await db_session.execute(
+                select(User).where(User.name == target_user_name)
+            )
+            users_to_update = name_query_result.scalars().all()
+            for user_to_update in users_to_update:
+                user_to_update.name = target_user_name + "B"
+
+            await db_session.commit()
+            await db_session.refresh(user_to_update)
+
+        """删除操作"""
+        async with async_session_factory() as db_session:
+            user_to_delete: User | None = await db_session.get(User, target_user_id)
+            await db_session.delete(user_to_delete)
+            await db_session.commit()
+
+        """自由操作"""
+        from sqlalchemy import text
+        sql = text("""
+            SELECT *
+            FROM user
+            WHERE user_name = :name
+        """)
+        async with async_session_factory() as text_session:
+            text_res: Result = await text_session.execute(
+                sql,
+                {
+                    "name": "byj"
+                }
+            )
+            text_final_res: Sequence[RowMapping] = text_res.mappings().all()
+
+
         raise NotImplementedError("请按任务说明补全 CRUD TODO")
     finally:
-        await engine.dispose()
+        await async_engine.dispose()
 
 
 if __name__ == "__main__":
