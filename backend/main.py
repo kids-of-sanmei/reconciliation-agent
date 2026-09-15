@@ -14,21 +14,21 @@ async def add_process_time_header(request, call_next) -> None:
     print("结束")
     return response
 
-engine_url = "mysql+aiomysql://root:123456@192.168.0.229:3306/exc?charset=utf8"
-async_demo = create_async_engine(
-    url= engine_url,
-    echo=True, # 输出日志
-    pool_size=10, #连接池活跃数量
-    max_overflow=20 #最大允许额外连接数量
-)
+# engine_url = "mysql+aiomysql://root:123456@192.168.0.229:3306/exc?charset=utf8"
+# async_demo = create_async_engine(
+#     url= engine_url,
+#     echo=True, # 输出日志
+#     pool_size=10, #连接池活跃数量
+#     max_overflow=20 #最大允许额外连接数量
+# )
 
-async def creat_tables():
-    async with async_demo.begin() as connection:
-        await connection.run_sync(Base.metadata.create_all)
+# async def creat_tables():
+#     async with async_demo.begin() as connection:
+#         await connection.run_sync(Base.metadata.create_all)
 
-@app.on_event("startup")
-async def start():
-    await creat_tables()
+# @app.on_event("startup")
+# async def start():
+#     await creat_tables()
 @app.get("/") 
 def read_root():
     return {"message": "Hello World"}
