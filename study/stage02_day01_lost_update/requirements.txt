@@ -1,0 +1,6 @@
+# 本练习复用 backend/pyproject.toml 中的依赖：
+# sqlalchemy>=2.0.52
+# aiomysql>=0.3.2
+#
+# 本目录的脚本是自包含的（只导入同目录的 models.py），
+# 运行时不依赖 backend/app，因此不需要设置 PYTHONPATH。

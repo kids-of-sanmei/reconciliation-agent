@@ -17,3 +17,13 @@
 - 任务文件：`stage01_day03_session_lifecycle/daily_agent_tasks.md`
 - 预计时间：75～90 分钟
 - 下一步：Stage 1 阶段验收（不看答案写出异步单表 CRUD）
+
+## 2026-09-17 Stage 2 Day 1
+
+- 阶段：Stage 2 — 事务边界与并发锁（分布式异步）
+- 目标：亲手复现「丢失更新（lost update）」，说清事务边界与并发写覆盖的时序，并分清原子 UPDATE、`asyncio.Lock`、数据库锁各自能解决什么、管不到什么
+- 任务目录：`stage02_day01_lost_update/`
+- 任务文件：`stage02_day01_lost_update/daily_agent_tasks.md`
+- 预计时间：75～90 分钟
+- 备注：用户于本日选择从 Stage 1 跳到并发锁专题；Stage 1 阶段验收记录为「顺延」，未创建目录
+- 下一步：Stage 2 Day 2 — 悲观锁 `with_for_update()`：行锁范围、`nowait`、锁等待超时
