@@ -14,7 +14,7 @@ const labels: Record<string, string> = {
     <div class="result-heading">
       <div>
         <h3 id="results-title">本次生成的文件</h3>
-        <p>数据准备已完成，后续逐行匹配与最终核查尚未执行。</p>
+        <p>数据准备已完成，可在下方继续逐行匹配与复核。</p>
       </div>
       <FileSpreadsheet :size="24" aria-hidden="true" />
     </div>

@@ -33,7 +33,7 @@ dev = ["mypy>=1.18", "pytest>=8.4", "ruff>=0.14", "openpyxl>=3.1.5", "types-open
 python_version = "3.13"
 strict = true
 warn_unreachable = true
-files = ["app/preparation", "app/core", "app/factory.py", "app/api/v1/preparation.py", "main.py"]
+files = ["app/preparation", "app/matching", "app/delivery", "app/core", "app/factory.py", "app/api/v1/preparation.py", "app/api/v1/matching.py", "app/api/v1/delivery.py", "app/schema", "main.py"]
 plugins = ["pydantic.mypy"]
 
 [tool.ruff]

@@ -5,17 +5,27 @@ from pathlib import Path
 
 
 def test_new_production_functions_are_annotated_and_documented() -> None:
-    """检查第一块生产代码的参数、返回类型及参数/返回说明完整性。"""
+    """检查数据准备和匹配代码的参数、返回类型及参数/返回说明完整性。"""
     backend = Path(__file__).resolve().parents[1]
     files = list((backend / "app/preparation").rglob("*.py"))
+    files += list((backend / "app/matching").rglob("*.py"))
+    files += list((backend / "app/delivery").rglob("*.py"))
     files += list((backend / "app/core").rglob("*.py"))
     files += [
         backend / relative
         for relative in (
             "app/factory.py",
             "app/api/v1/preparation.py",
+            "app/api/v1/matching.py",
+            "app/api/v1/delivery.py",
+            "app/schema/delivery.py",
+            "app/schema/matching.py",
             "app/schema/preparation.py",
             "main.py",
+            "tests/test_matching.py",
+            "tests/test_matching_api.py",
+            "tests/test_delivery.py",
+            "tests/test_delivery_api.py",
         )
     ]
     for path in files:

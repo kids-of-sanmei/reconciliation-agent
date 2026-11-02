@@ -6,6 +6,7 @@ import ProgressFlow from '../components/ProgressFlow.vue'
 import ResultPanel from '../components/ResultPanel.vue'
 import TaskHistory from '../components/TaskHistory.vue'
 import TaskConfirmation from '../components/TaskConfirmation.vue'
+import MatchingPanel from '../components/MatchingPanel.vue'
 import { useReconcile } from '../composables/useReconcile'
 import { STAGE_LABELS, STATUS_LABELS } from '../lib/preparation'
 
@@ -34,7 +35,7 @@ function onReset() {
   <main class="page">
     <div class="page-inner">
       <header class="masthead">
-        <div class="brand"><ArrowLeftRight :size="21" :stroke-width="2" aria-hidden="true" /><span>清账</span><span class="brand-context">数据接入与底稿准备</span></div>
+        <div class="brand"><ArrowLeftRight :size="21" :stroke-width="2" aria-hidden="true" /><span>清账</span><span class="brand-context">数据准备 · 匹配 · 核查</span></div>
         <button v-if="task" class="btn btn-ghost" type="button" :disabled="submitting" @click="onReset">新建任务</button>
       </header>
 
@@ -87,6 +88,7 @@ function onReset() {
         </details>
         <TaskHistory :task="task" />
         <ResultPanel v-if="task.status === 'ready'" :task="task" />
+        <MatchingPanel v-if="task.status === 'ready'" :key="task.task_id" :task-id="task.task_id" />
         <ul v-if="task.status === 'ready' && task.issues.length" class="warnings"><li v-for="(issue, i) in task.issues" :key="i">{{ issue.message }}</li></ul>
       </section>
 

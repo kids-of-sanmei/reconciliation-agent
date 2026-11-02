@@ -5,6 +5,8 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import router
 from app.core.config import Settings
+from app.delivery.service import DeliveryService
+from app.matching.service import MatchingService
 from app.preparation.application.service import PreparationService
 from app.preparation.domain.errors import PreparationError
 
@@ -21,6 +23,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings if settings is not None else Settings()
     application = FastAPI(title="清账 · 对账 Agent", version="0.1.0")
     application.state.preparation_service = PreparationService(resolved)
+    application.state.matching_service = MatchingService(resolved)
+    application.state.delivery_service = DeliveryService(resolved)
     application.include_router(router)
     application.add_api_route("/", read_root, methods=["GET"], tags=["状态"])
     application.add_exception_handler(PreparationError, handle_preparation_error)
