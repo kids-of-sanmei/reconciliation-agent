@@ -137,6 +137,19 @@ a:focus-visible {
   outline-offset: 2px;
 }
 
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 /* ---------- 轻材质面板 ---------- */
 .material-panel {
   background: var(--material-bg);

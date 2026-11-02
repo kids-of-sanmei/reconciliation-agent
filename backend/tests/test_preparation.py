@@ -291,6 +291,11 @@ def test_invalid_mapping_from_model_is_not_trusted(tmp_path: Path) -> None:
     result = service.run(task.task_id)
     assert result.status == TaskStatus.NEEDS_INPUT
     assert any(issue.code == "UNKNOWN_SHEET" for issue in result.issues)
+    titles = [event.title for event in result.events]
+    assert "调用模型辅助识别字段" in titles
+    assert "模型已返回字段建议" in titles
+    assert result.events[-1].kind == "waiting"
+    assert "字段及对账月份校验通过" not in titles
 
 
 @pytest.mark.parametrize("value", ["NaN", "Infinity", "1,2", "", "abc"])
@@ -518,7 +523,11 @@ def test_valid_model_advice_is_validated_and_persisted(tmp_path: Path) -> None:
         b_workbook(),
         TaskOptions(reconciliation_period="2026-07"),
     )
-    assert service.run(task.task_id).status == TaskStatus.READY
+    result = service.run(task.task_id)
+    assert result.status == TaskStatus.READY
+    titles = [event.title for event in result.events]
+    assert titles.index("调用模型辅助识别字段") < titles.index("模型已返回字段建议")
+    assert titles.index("模型已返回字段建议") < titles.index("字段及对账月份校验通过")
     advice = service.repository.read_model(
         task.task_id, "versions/1/mapping_advice.json", MappingAdvice
     )

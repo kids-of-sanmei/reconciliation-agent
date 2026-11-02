@@ -1,131 +1,157 @@
-import { ref } from 'vue'
-import { demoReconcile } from '../lib/demoReconcile'
-import { timestamp } from '../lib/download'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { isTerminal, requestTask, taskUrl, type ConfirmationInput, type TaskView } from '../lib/preparation'
 
-export type Phase = 'idle' | 'processing' | 'success' | 'error'
-
-export interface ReconcileStats {
-  matched: number
-  mismatched: number
-  onlyA: number
-  onlyB: number
-}
-
-export interface ReconcileResult {
-  blob: Blob
-  filename: string
-  stats: ReconcileStats | null
-}
-
-const STAGES = ['上传账单', '解析数据', '智能比对', '生成报表'] as const
-
-class BackendUnavailable extends Error {
-  constructor() {
-    super('backend unavailable')
-  }
-}
-
-async function requestBackend(fileA: File, fileB: File): Promise<ReconcileResult> {
-  const fd = new FormData()
-  fd.append('file_a', fileA)
-  fd.append('file_b', fileB)
-
-  let res: Response
-  try {
-    res = await fetch('/api/reconcile', { method: 'POST', body: fd })
-  } catch {
-    throw new BackendUnavailable()
-  }
-  if (res.status === 404) throw new BackendUnavailable()
-  if (!res.ok) {
-    const text = await res.text().catch(() => '')
-    throw new Error(text.trim() || `服务器返回错误（HTTP ${res.status}）`)
-  }
-
-  const blob = await res.blob()
-  const dispo = res.headers.get('Content-Disposition') ?? ''
-  const m = /filename\*?=(?:UTF-8''|")?([^";]+)/i.exec(dispo)
-  const filename = m?.[1] ? decodeURIComponent(m[1].replace(/"/g, '')) : `对账结果_${timestamp()}.xlsx`
-  return { blob, filename, stats: null }
-}
+const STORAGE_KEY = 'reconciliation.current-task'
 
 export function useReconcile() {
-  const phase = ref<Phase>('idle')
-  const stageIndex = ref(0)
-  const stages = [...STAGES]
-  const result = ref<ReconcileResult | null>(null)
+  const task = ref<TaskView | null>(null)
   const errorMsg = ref('')
-  const isDemo = ref(false)
+  const submitting = ref(false)
+  const syncing = ref(false)
+  const lastSyncedAt = ref('')
+  const processing = computed(() => submitting.value || (!!task.value && !isTerminal(task.value)))
+  let timer: ReturnType<typeof setTimeout> | undefined
+  let generation = 0
 
-  let timers: number[] = []
-
-  function clearTimers() {
-    timers.forEach((t) => clearTimeout(t))
-    timers = []
+  function stopPolling() {
+    generation += 1
+    clearTimeout(timer)
+    syncing.value = false
   }
 
-  /** 处理期间按节奏推进阶段指示器 */
-  function advanceStages(totalMs: number) {
-    clearTimers()
-    stageIndex.value = 0
-    const step = totalMs / STAGES.length
-    STAGES.forEach((_, i) => {
-      if (i === 0) return
-      timers.push(window.setTimeout(() => (stageIndex.value = i), i * step))
-    })
+  function remember(view: TaskView) {
+    task.value = view
+    lastSyncedAt.value = new Date().toISOString()
+    try { localStorage.setItem(STORAGE_KEY, view.task_id) } catch { /* 浏览器可能禁用存储。 */ }
+    const url = new URL(window.location.href)
+    url.searchParams.set('task', view.task_id)
+    window.history.replaceState(null, '', url)
   }
 
-  async function start(fileA: File, fileB: File) {
-    phase.value = 'processing'
-    errorMsg.value = ''
-    isDemo.value = false
-    result.value = null
-    advanceStages(5200)
-
-    const startedAt = performance.now()
+  async function poll(id: string, current: number) {
+    if (current !== generation) return
+    syncing.value = true
     try {
-      result.value = await requestBackend(fileA, fileB)
-    } catch (err) {
-      if (err instanceof BackendUnavailable) {
-        // 后端未就绪时回退到本地演示模式
-        isDemo.value = true
-        try {
-          const demo = await demoReconcile(fileA, fileB)
-          result.value = { blob: demo.blob, filename: demo.filename, stats: demo.stats }
-        } catch (demoErr) {
-          phase.value = 'error'
-          errorMsg.value = demoErr instanceof Error ? demoErr.message : '文件解析失败，请重试'
-          clearTimers()
-          return
-        }
-      } else {
-        phase.value = 'error'
-        errorMsg.value = err instanceof Error ? err.message : '对账失败，请稍后重试'
-        clearTimers()
-        return
+      const view = await requestTask(taskUrl(id))
+      if (current !== generation) return
+      remember(view)
+      errorMsg.value = ''
+      if (submitting.value || !isTerminal(view)) {
+        timer = setTimeout(() => void poll(id, current), 800)
+      }
+    } catch (error) {
+      if (current !== generation) return
+      errorMsg.value = error instanceof Error ? error.message : '更新任务状态失败'
+      timer = setTimeout(() => void poll(id, current), 3000)
+    } finally {
+      if (current === generation) syncing.value = false
+    }
+  }
+
+  function watchTask() {
+    stopPolling()
+    if (task.value) void poll(task.value.task_id, generation)
+  }
+
+  async function loadTask(id: string) {
+    if (submitting.value) return
+    stopPolling()
+    const current = generation
+    submitting.value = true
+    errorMsg.value = ''
+    try {
+      const view = await requestTask(taskUrl(id.trim()))
+      if (current === generation) remember(view)
+    } catch (error) {
+      if (current === generation) errorMsg.value = error instanceof Error ? error.message : '读取任务失败'
+    } finally {
+      if (current === generation) {
+        submitting.value = false
+        if (task.value && !isTerminal(task.value)) watchTask()
       }
     }
+  }
 
-    // 保证进度动画至少播放一个完整节奏，体验更顺滑
-    const elapsed = performance.now() - startedAt
-    const minDuration = 2600
-    if (elapsed < minDuration) {
-      await new Promise((r) => setTimeout(r, minDuration - elapsed))
+  async function start(fileA: File, fileB: File, period: string) {
+    if (processing.value || task.value) return
+    stopPolling()
+    const current = generation
+    submitting.value = true
+    errorMsg.value = ''
+    const data = new FormData()
+    data.append('file_a', fileA)
+    data.append('file_b', fileB)
+    data.append('options', JSON.stringify({ reconciliation_period: period || null }))
+    try {
+      const view = await requestTask('/api/preparation/tasks', { method: 'POST', body: data })
+      if (current === generation) remember(view)
+    } catch (error) {
+      if (current === generation) errorMsg.value = error instanceof Error ? error.message : '上传失败'
+    } finally {
+      if (current === generation) {
+        submitting.value = false
+        if (task.value) watchTask()
+      }
     }
+  }
 
-    clearTimers()
-    stageIndex.value = STAGES.length
-    phase.value = 'success'
+  async function act(action: 'run' | 'confirm', confirmation?: ConfirmationInput) {
+    if (!task.value || submitting.value) return
+    const id = task.value.task_id
+    stopPolling()
+    const current = generation
+    submitting.value = true
+    errorMsg.value = ''
+    timer = setTimeout(() => void poll(id, current), 300)
+    try {
+      const view = await requestTask(`${taskUrl(id)}/${action}`, {
+        method: 'POST',
+        ...(confirmation ? {
+          headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(confirmation),
+        } : {}),
+      })
+      if (current === generation) remember(view)
+    } catch (error) {
+      if (current === generation) {
+        stopPolling()
+        errorMsg.value = error instanceof Error ? error.message : '操作失败'
+        submitting.value = false
+        if (task.value && !isTerminal(task.value)) {
+          const next = generation
+          timer = setTimeout(() => void poll(id, next), 3000)
+        }
+      }
+    } finally {
+      if (current === generation) {
+        submitting.value = false
+        // 使请求期间发出的查询失效，避免旧状态覆盖最终结果。
+        stopPolling()
+        if (task.value && !isTerminal(task.value)) watchTask()
+      }
+    }
   }
 
   function reset() {
-    clearTimers()
-    phase.value = 'idle'
-    stageIndex.value = 0
-    result.value = null
+    stopPolling()
+    task.value = null
+    submitting.value = false
     errorMsg.value = ''
-    isDemo.value = false
+    try { localStorage.removeItem(STORAGE_KEY) } catch { /* 保持页面可用。 */ }
+    const url = new URL(window.location.href)
+    url.searchParams.delete('task')
+    window.history.replaceState(null, '', url)
   }
 
-  return { phase, stageIndex, stages, result, errorMsg, isDemo, start, reset }
+  onMounted(() => {
+    let id = new URLSearchParams(window.location.search).get('task')
+    try { id ||= localStorage.getItem(STORAGE_KEY) } catch { /* 可使用网址恢复。 */ }
+    if (id) void loadTask(id)
+  })
+  onBeforeUnmount(stopPolling)
+
+  return {
+    task, errorMsg, submitting, syncing, processing, lastSyncedAt,
+    start, loadTask, refresh: watchTask, retry: () => act('run'),
+    confirm: (input: ConfirmationInput) => act('confirm', input), reset,
+  }
 }

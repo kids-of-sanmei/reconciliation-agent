@@ -55,4 +55,5 @@ def transition(
         issues=issues,
         prepared_ref=prepared_ref,
         artifact_names=artifact_names,
+        events=task.events,
     )

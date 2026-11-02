@@ -115,7 +115,7 @@ class PreparationGraph:
                     transition(
                         task,
                         TaskStatus.FAILED,
-                        operation.__name__,
+                        task.stage,
                         issues=(Issue(code=code, message=message),),
                     )
                 )

@@ -222,6 +222,21 @@ class ConfirmationRecord(DomainModel):
     output_data_version: int
 
 
+EventKind = Literal["started", "completed", "info", "waiting", "failed"]
+
+
+class TaskEvent(DomainModel):
+    """任务内有序的实际执行记录；跨重试和数据版本保留。"""
+
+    sequence: int = Field(ge=1)
+    occurred_at: datetime
+    data_version: int = Field(ge=1)
+    stage: str
+    kind: EventKind
+    title: str
+    detail: str
+
+
 class TaskView(DomainModel):
     task_id: str
     status: TaskStatus
@@ -236,6 +251,7 @@ class TaskView(DomainModel):
     issues: tuple[Issue, ...] = ()
     prepared_ref: str | None = None
     artifact_names: tuple[str, ...] = ()
+    events: tuple[TaskEvent, ...] = ()
 
 
 class SourceLocation(DomainModel):

@@ -8,7 +8,7 @@ export default defineConfig({
     proxy: {
       // 后端对账接口，按需修改 target
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'http://127.0.0.1:7546',
         changeOrigin: true,
       },
     },

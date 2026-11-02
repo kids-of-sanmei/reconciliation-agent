@@ -13,7 +13,7 @@ const emit = defineEmits<{
   'update:modelValue': [file: File | null]
 }>()
 
-const ACCEPT = ['.xlsx', '.xls', '.csv']
+const ACCEPT = ['.xlsx']
 const MAX_SIZE = 20 * 1024 * 1024
 
 const inputRef = ref<HTMLInputElement | null>(null)
@@ -98,7 +98,7 @@ function clear(e: MouseEvent) {
           <UploadCloud :size="26" :stroke-width="1.8" />
         </span>
         <span class="zone-hint">{{ hint }}</span>
-        <span class="zone-formats">.xlsx / .xls / .csv</span>
+        <span class="zone-formats">.xlsx · 最大 20 MB</span>
       </div>
 
       <!-- 已选择 -->

@@ -38,9 +38,22 @@ def test_upload_progress_prepared_and_download(tmp_path: Path) -> None:
             files={"file_a": ("a.xlsx", a_workbook()), "file_b": ("b.xlsx", b_workbook())},
         )
         assert response.status_code == 202, response.text
+        received = response.json()["events"]
+        assert len(received) == 1 and received[0]["stage"] == "received"
         task_id = response.json()["task_id"]
         status = client.get(f"/api/preparation/tasks/{task_id}")
         assert status.status_code == 200 and status.json()["status"] == "ready"
+        events = status.json()["events"]
+        assert [event["sequence"] for event in events] == list(range(1, len(events) + 1))
+        assert events[0] == received[0]
+        assert events[-1]["stage"] == "preparation_ready"
+        assert events[-1]["kind"] == "completed"
+        assert {event["stage"] for event in events} >= {
+            "received", "parse_workbooks", "identify_fields", "normalize_records",
+            "build_baseline", "build_b_index", "publish_prepared", "preparation_ready",
+        }
+        assert any("A 表 3 条，B 表 7 条" in event["detail"] for event in events)
+        assert not any(event["title"] == "调用模型辅助识别字段" for event in events)
         prepared = client.get(f"/api/preparation/tasks/{task_id}/prepared")
         assert prepared.status_code == 200
         assert prepared.json()["readiness"] == "ready"
@@ -51,8 +64,12 @@ def test_upload_progress_prepared_and_download(tmp_path: Path) -> None:
             client.get(f"/api/preparation/tasks/{task_id}/artifacts/unknown.json").status_code
             == 404
         )
-        assert client.post(f"/api/preparation/tasks/{task_id}/run").json()["data_version"] == 1
+        replay = client.post(f"/api/preparation/tasks/{task_id}/run").json()
+        assert replay["data_version"] == 1 and replay["events"] == events
         assert client.get(f"/api/preparation/tasks/{task_id}/profiles").status_code == 200
+
+    with client_at(tmp_path) as restarted:
+        assert restarted.get(f"/api/preparation/tasks/{task_id}").json()["events"] == events
 
 
 def test_http_confirmation_accepts_json_mappings_and_recovers(tmp_path: Path) -> None:
@@ -68,6 +85,8 @@ def test_http_confirmation_accepts_json_mappings_and_recovers(tmp_path: Path) ->
         task_id = response.json()["task_id"]
         waiting = client.get(f"/api/preparation/tasks/{task_id}")
         assert waiting.json()["status"] == "needs_input"
+        waiting_events = waiting.json()["events"]
+        assert waiting_events[-1]["kind"] == "waiting"
         options = waiting.json()["options"]
         options["reconciliation_period"] = "2026-07"
         options["mappings"].append(
@@ -93,6 +112,10 @@ def test_http_confirmation_accepts_json_mappings_and_recovers(tmp_path: Path) ->
         assert confirmed.status_code == 200, confirmed.text
         assert confirmed.json()["status"] == "ready"
         assert confirmed.json()["data_version"] == 2
+        events = confirmed.json()["events"]
+        assert events[:len(waiting_events)] == waiting_events
+        assert events[-1]["data_version"] == 2
+        assert any(event["detail"] == "财务：核实字段和期间" for event in events)
 
 
 def test_http_rejects_invalid_parameters_and_unsupported_formats(tmp_path: Path) -> None:
@@ -161,3 +184,39 @@ def test_optional_reference_upload_and_strict_confirmation_boundary(tmp_path: Pa
         )
         assert blank.status_code == 422
         assert client.get(f"/api/preparation/tasks/{task_id}").json()["data_version"] == 1
+
+
+def test_failed_execution_and_retry_preserve_real_history(tmp_path: Path) -> None:
+    """失败记录保留实际阶段，重试追加历史且不会声称成功；tmp_path 为隔离目录。"""
+    with client_at(tmp_path) as client:
+        response = client.post(
+            "/api/preparation/tasks",
+            files={"file_a": ("a.xlsx", a_workbook()), "file_b": ("broken.xlsx", b"not an xlsx")},
+        )
+        url = f"/api/preparation/tasks/{response.json()['task_id']}"
+        failed = client.get(url).json()
+        assert failed["status"] == "failed"
+        assert failed["events"][-1]["stage"] == "parse_workbooks"
+        assert failed["events"][-1]["kind"] == "failed"
+        assert any(event["title"] == "已解析 a.xlsx" for event in failed["events"])
+        retried = client.post(f"{url}/run").json()
+        assert retried["status"] == "failed"
+        assert retried["events"][:len(failed["events"])] == failed["events"]
+        assert len(retried["events"]) > len(failed["events"])
+        assert not retried["artifact_names"]
+        assert not any(event["stage"] == "preparation_ready" for event in retried["events"])
+
+
+def test_legacy_task_read_does_not_invent_history(tmp_path: Path) -> None:
+    """兼容旧任务且不补造过往动作；tmp_path 为隔离目录。"""
+    with client_at(tmp_path) as client:
+        response = client.post(
+            "/api/preparation/tasks",
+            files={"file_a": ("a.xlsx", a_workbook()), "file_b": ("b.xlsx", b_workbook())},
+        )
+        task_id = response.json()["task_id"]
+        path = tmp_path / "tasks" / task_id / "task.json"
+        stored = json.loads(path.read_text(encoding="utf-8"))
+        del stored["events"]
+        path.write_text(json.dumps(stored, ensure_ascii=False), encoding="utf-8")
+        assert client.get(f"/api/preparation/tasks/{task_id}").json()["events"] == []

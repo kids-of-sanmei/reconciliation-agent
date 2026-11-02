@@ -130,7 +130,7 @@ class PreparationService:
             options=options,
         )
         self.repository.save_task(task)
-        return task
+        return self.repository.get_task(task_id)
 
     def get(self, task_id: str) -> TaskView:
         """查询任务。
@@ -189,10 +189,21 @@ class PreparationService:
                                 "尚未形成可恢复中断，请先执行任务",
                                 http_status=409,
                             )
+                        self.repository.record_event(
+                            task_id, "apply_confirmation", "started", "收到人工补充，开始恢复流程"
+                        )
                         graph.invoke(Command(resume=confirmation.model_dump_json()), config)
                     elif checkpoint.next:
+                        self.repository.record_event(
+                            task_id, task.stage, "info", "从已保存的检查点恢复执行"
+                        )
                         graph.invoke(None, config)
                     else:
+                        self.repository.record_event(
+                            task_id, "received", "started",
+                            "重新执行数据准备" if task.events and task.status != TaskStatus.RECEIVED
+                            else "开始执行数据准备",
+                        )
                         graph.invoke(
                             PreparationState(task_id=task_id, data_version=task.data_version),
                             config,

@@ -2,6 +2,7 @@
 
 import hashlib
 import os
+from datetime import UTC, datetime
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from uuid import UUID
@@ -9,7 +10,14 @@ from uuid import UUID
 from filelock import FileLock
 
 from app.preparation.domain.errors import PreparationError
-from app.preparation.domain.models import ArtifactRef, DomainModel, TaskView
+from app.preparation.domain.models import (
+    ArtifactRef,
+    DomainModel,
+    EventKind,
+    TaskEvent,
+    TaskStatus,
+    TaskView,
+)
 
 
 class LocalTaskRepository:
@@ -144,12 +152,97 @@ class LocalTaskRepository:
         return self.read_model(task_id, "task.json", TaskView)
 
     def save_task(self, task: TaskView) -> None:
-        """原子保存任务状态。
+        """原子保存状态和阶段记录，保留执行期间新增的历史。
 
         Args:
             task: 要替换的完整任务视图。
         """
+        previous = (
+            self.get_task(task.task_id)
+            if self.path(task.task_id, "task.json").is_file()
+            else None
+        )
+        if previous is not None:
+            task = task.model_copy(update={"events": previous.events})
+        if previous is None or (previous.status, previous.stage) != (task.status, task.stage):
+            titles = {
+                "received": "原始文件已保存",
+                "parse_workbooks": "开始解析工作簿",
+                "identify_fields": "开始识别字段",
+                "apply_confirmation": "人工补充已保存，继续执行",
+                "normalize_and_build_baseline": "开始标准化明细",
+                "normalize_records": "开始标准化明细",
+                "build_baseline": "开始生成 C 初始底稿",
+                "build_b_index": "开始建立 B 查询索引",
+                "publish_prepared": "开始保存数据准备产物",
+                "preparation_ready": "数据准备已完成",
+            }
+            title = titles.get(task.stage, "执行处理阶段")
+            detail = ""
+            kind: EventKind = "started"
+            if task.status == TaskStatus.RECEIVED:
+                kind = "completed"
+                detail = "、".join(source.original_name for source in task.sources)
+            elif task.status == TaskStatus.NEEDS_INPUT:
+                kind, title = "waiting", "流程暂停，等待补充信息"
+                detail = "；".join(issue.message for issue in task.issues)
+            elif task.status == TaskStatus.FAILED:
+                kind, title = "failed", "当前阶段执行失败"
+                detail = "；".join(issue.message for issue in task.issues)
+            elif task.status == TaskStatus.READY:
+                kind = "completed"
+                detail = f"已保存 {len(task.artifact_names)} 项产物，可下载 C 初始底稿和审计记录。"
+            elif task.status == TaskStatus.PREPARING and task.stage == "identify_fields":
+                kind, title = "completed", "字段及对账月份校验通过"
+                detail = f"已确认 {len(task.options.mappings)} 个业务区域。"
+            elif task.stage == "apply_confirmation":
+                kind = "completed"
+                confirmation = task.confirmations[-1].confirmation
+                detail = f"{confirmation.actor}：{confirmation.reason}"
+            task = self._with_event(task, task.stage, kind, title, detail)
         self.write_model(task.task_id, "task.json", task)
+
+    def record_event(
+        self, task_id: str, stage: str, kind: EventKind, title: str, detail: str = ""
+    ) -> None:
+        """在执行锁内追加真实动作；查询端始终读取完整的原子快照。
+
+        Args:
+            task_id: 当前执行任务。
+            stage: 动作所属阶段。
+            kind: 动作结果类型。
+            title: 面向人员的动作名称。
+            detail: 数量、工具结果或问题说明，不保存服务密钥。
+        """
+        task = self._with_event(self.get_task(task_id), stage, kind, title, detail)
+        self.write_model(task_id, "task.json", task)
+
+    def _with_event(
+        self, task: TaskView, stage: str, kind: EventKind, title: str, detail: str
+    ) -> TaskView:
+        """构造带顺序、版本及真实时间的任务快照。
+
+        Args:
+            task: 最新持久化任务。
+            stage: 动作所属阶段。
+            kind: 动作结果类型。
+            title: 动作名称。
+            detail: 动作详情。
+
+        Returns:
+            保留已有记录并追加一个事件的不可变任务视图。
+        """
+        now = datetime.now(UTC)
+        event = TaskEvent(
+            sequence=len(task.events) + 1,
+            occurred_at=now,
+            data_version=task.data_version,
+            stage=stage,
+            kind=kind,
+            title=title,
+            detail=detail,
+        )
+        return task.model_copy(update={"events": (*task.events, event), "updated_at": now})
 
     def reference(self, task_id: str, relative_path: str) -> ArtifactRef:
         """读取已存在文件的可校验引用。

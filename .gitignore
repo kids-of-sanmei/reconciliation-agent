@@ -43,6 +43,13 @@ coverage/
 backend/.data/
 *.tsbuildinfo
 
+# ---------- Playwright 本地文件 ----------
+.playwright-cli/
+playwright/
+playwright-report/
+test-results/
+output/playwright/
+
 # ---------- Docker ----------
 docker-compose.override.yml
 
