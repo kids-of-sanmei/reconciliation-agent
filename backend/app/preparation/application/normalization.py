@@ -130,6 +130,31 @@ def merged_date_cell(sheet: SheetSnapshot, column: str, row: int) -> CellSnapsho
     return current
 
 
+def is_aggregate_formula(cell: CellSnapshot, sheet: SheetSnapshot) -> bool:
+    """判断独立或共享公式是否为汇总函数，不重算或改写公式。
+
+    Args:
+        cell: 待判断的原始公式单元格。
+        sheet: 用于查找同一共享公式组锚点的工作表。
+
+    Returns:
+        公式自身或共享公式锚点以 SUM、SUBTOTAL 或 AGGREGATE 开头时为 True。
+    """
+    formula = cell.formula
+    if not formula and cell.shared_formula_index is not None:
+        formula = next(
+            (
+                candidate.formula
+                for candidate in sheet.cells.values()
+                if candidate.shared_formula_index == cell.shared_formula_index and candidate.formula
+            ),
+            None,
+        )
+    return bool(
+        formula and re.match(r"^=?\s*(SUM|SUBTOTAL|AGGREGATE)\s*\(", formula, re.IGNORECASE)
+    )
+
+
 def is_structural_row(sheet: SheetSnapshot, mapping: SheetMapping, row: int) -> bool:
     """判断空行、合计及重复表头。
 
@@ -155,6 +180,31 @@ def is_structural_row(sheet: SheetSnapshot, mapping: SheetMapping, row: int) -> 
     if re.fullmatch(total_pattern, (date_value or "").strip()):
         return True
     if not date_value and any(re.fullmatch(total_pattern, value.strip()) for value in values):
+        return True
+    identity_fields = (
+        FieldName.DATE,
+        FieldName.SPEC,
+        FieldName.DOCUMENT,
+        FieldName.PRODUCT_ID,
+        FieldName.PRODUCT_NAME,
+    )
+    has_identity = any(
+        cell_text(cell)
+        for field in identity_fields
+        if (column := mapping.fields.get(field)) is not None
+        and (cell := sheet.cells.get(f"{column}{row}")) is not None
+    )
+    populated_cells = [
+        cell
+        for column in mapping.fields.values()
+        if (cell := sheet.cells.get(f"{column}{row}")) is not None
+        and (cell_text(cell) not in {None, ""} or cell.formula is not None)
+    ]
+    if (
+        not has_identity
+        and populated_cells
+        and all(is_aggregate_formula(cell, sheet) for cell in populated_cells)
+    ):
         return True
     nonempty: list[tuple[str, str]] = []
     for column in mapping.fields.values():

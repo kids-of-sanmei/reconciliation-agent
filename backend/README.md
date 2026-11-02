@@ -97,10 +97,31 @@ uv run pytest -q
 | `RECONCILIATION_MAX_ARCHIVE_BYTES` | 单工作簿解压后的部件总量上限，默认 200 MB |
 | `RECONCILIATION_MAX_CELLS` | 单工作簿显式单元格上限，默认 500,000 |
 | `RECONCILIATION_LLM_MODEL` | 可选的实际模型名称 |
+| `RECONCILIATION_LLM_PROVIDER` | `openai`（默认）或 `ollama`（本地原生接口，无需密钥） |
 | `RECONCILIATION_LLM_API_KEY` | 对应模型接口密钥，不写入任务数据 |
-| `RECONCILIATION_LLM_BASE_URL` | 可选兼容接口地址 |
+| `RECONCILIATION_LLM_BASE_URL` | 兼容服务地址；Ollama 使用服务根地址，如 `http://127.0.0.1:11434` |
+| `RECONCILIATION_LLM_TIMEOUT_SECONDS` | 单次模型调用超时，默认 180 秒 |
+| `RECONCILIATION_LLM_CONTEXT_TOKENS` | 本地 Ollama 上下文长度，默认 16384 |
 
 不配置模型时，已知模板可以直接准备，陌生表头进入人工字段确认。模型仅参与结构识别，不参与金额计算和文件改写。离线回归不调用真实模型服务。
+
+### 本地 Ollama
+
+确保 Ollama 服务运行，使用 `ollama list` 查看已安装模型。在 `backend/.env` 中配置：
+
+```dotenv
+RECONCILIATION_LLM_PROVIDER=ollama
+RECONCILIATION_LLM_MODEL=qwen3.5:9b
+RECONCILIATION_LLM_BASE_URL=http://127.0.0.1:11434
+RECONCILIATION_LLM_TIMEOUT_SECONDS=180
+RECONCILIATION_LLM_CONTEXT_TOKENS=16384
+```
+
+`.env` 按后端目录定位，启动目录变化不影响加载。修改后重启后端；本机模型无需设置 API Key，也无需新增 Ollama Python 依赖。
+
+规则无法明确的角色会交给本地模型，输入仅含该角色的表头、有限明细、尾行及公式证据，避免 A/B 中同名工作表混淆。通过 [Ollama 原生结构化输出](https://docs.ollama.com/capabilities/structured-outputs) 约束 JSON 结果，程序继续校验；格式或范围结构不合法时，模型有一次自动修正机会。失败或仍有业务歧义时不会伪造有效映射。
+
+上传只需提供 A/B 两个文件。未指定月份时，程序从 A 表业务日期推断唯一年月；证据不足或 A 跨月时仍明确报告问题，不从当前日期猜测年份。只有汇总公式、没有日期及业务身份的末行自动作为结构行处理，支持 Excel 共享公式，避免合计再次计入业务明细。
 
 ## 提示词维护
 

@@ -5,9 +5,16 @@ from app.preparation.prompts.base import PromptDefinition, RenderedPrompt, rende
 
 FIELD_MAPPING_PROMPT = PromptDefinition(
     prompt_id="preparation.field_mapping",
-    version="1.0.0",
+    version="1.1.0",
     system_resource="field_mapping_system.md",
     user_resource="field_mapping_user.md",
+)
+
+FIELD_MAPPING_REPAIR_PROMPT = PromptDefinition(
+    prompt_id="preparation.field_mapping_repair",
+    version="1.0.0",
+    system_resource="field_mapping_system.md",
+    user_resource="field_mapping_repair_user.md",
 )
 
 
@@ -22,4 +29,18 @@ def build_field_mapping_prompt(profiles: TableProfiles) -> RenderedPrompt:
     """
     return render_prompt(
         FIELD_MAPPING_PROMPT, {"profiles_json": profiles.model_dump_json(indent=2)}
+    )
+
+
+def build_field_mapping_repair_prompt(validation_errors_json: str) -> RenderedPrompt:
+    """装配结构化输出失败后的有限修正请求。
+
+    Args:
+        validation_errors_json: 不包含原始输入及堆栈的程序校验错误 JSON。
+
+    Returns:
+        与首次识别使用相同业务边界的修正消息及版本信息。
+    """
+    return render_prompt(
+        FIELD_MAPPING_REPAIR_PROMPT, {"validation_errors_json": validation_errors_json}
     )

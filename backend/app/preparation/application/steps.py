@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 
 from app.preparation.application.mapping import build_profiles, detect_mappings, validate_mappings
 from app.preparation.application.normalization import RecordNormalizer, build_index, parse_decimal
+from app.preparation.application.period import infer_reconciliation_period
 from app.preparation.application.tasks import transition
 from app.preparation.domain.errors import PreparationError
 from app.preparation.domain.models import (
@@ -59,10 +60,14 @@ class PreparationSteps:
             self.repository.record_event(
                 task_id, "parse_workbooks", "started", f"开始读取 {source.original_name}"
             )
-            workbook = self.workbook.read(self.repository.path(task_id, source.relative_path), source)
+            workbook = self.workbook.read(
+                self.repository.path(task_id, source.relative_path), source
+            )
             workbooks.append(workbook)
             self.repository.record_event(
-                task_id, "parse_workbooks", "completed",
+                task_id,
+                "parse_workbooks",
+                "completed",
                 f"已解析 {workbook.source_file.original_name}",
                 f"读取 {len(workbook.sheets)} 张工作表，"
                 f"保存 {sum(len(sheet.cells) for sheet in workbook.sheets)} 个原始单元格。",
@@ -92,7 +97,9 @@ class PreparationSteps:
                 if len(candidates) == 1:
                     mappings.extend(candidates)
                     self.repository.record_event(
-                        task_id, "identify_fields", "completed",
+                        task_id,
+                        "identify_fields",
+                        "completed",
                         f"规则识别 {workbook.source_file.role.value.upper()} 表字段成功",
                         f"工作表：{candidates[0].sheet_name}；表头第 {candidates[0].header_row} 行。",
                     )
@@ -101,15 +108,23 @@ class PreparationSteps:
             not any(item.role == role for item in mappings) for role in (FileRole.A, FileRole.B)
         ):
             try:
+                unresolved_roles = {
+                    role
+                    for role in (FileRole.A, FileRole.B)
+                    if not any(item.role == role for item in mappings)
+                }
                 main_snapshots = SourceSnapshots(
                     workbooks=tuple(
                         item
                         for item in snapshots.workbooks
-                        if item.source_file.role != FileRole.REFERENCE
+                        if item.source_file.role in unresolved_roles
                     )
                 )
                 self.repository.record_event(
-                    task_id, "identify_fields", "started", "调用模型辅助识别字段",
+                    task_id,
+                    "identify_fields",
+                    "started",
+                    "调用模型辅助识别字段",
                     "规则尚未确定全部字段，向模型提交表结构摘要及有限样例。",
                 )
                 advice = self.advisor.suggest(build_profiles(main_snapshots))
@@ -120,7 +135,10 @@ class PreparationSteps:
                     if not any(item.role == role for item in mappings):
                         mappings.extend(item for item in advice.mappings if item.role == role)
                 self.repository.record_event(
-                    task_id, "identify_fields", "completed", "模型已返回字段建议",
+                    task_id,
+                    "identify_fields",
+                    "completed",
+                    "模型已返回字段建议",
                     f"返回 {len(advice.mappings)} 项映射建议，继续执行程序校验。",
                 )
             except PreparationError as exc:
@@ -135,23 +153,44 @@ class PreparationSteps:
                     )
                 )
                 self.repository.record_event(
-                    task_id, "identify_fields", "info", "模型识别暂不可用",
+                    task_id,
+                    "identify_fields",
+                    "info",
+                    "模型识别暂不可用",
                     "可提供人工字段映射后继续执行，或稍后重试。",
                 )
         else:
             self.repository.record_event(
-                task_id, "identify_fields", "info", "本次字段识别未调用模型",
+                task_id,
+                "identify_fields",
+                "info",
+                "本次字段识别未调用模型",
                 "已确认映射及规则已覆盖 A/B 表。"
-                if all(any(item.role == role for item in mappings) for role in (FileRole.A, FileRole.B))
+                if all(
+                    any(item.role == role for item in mappings) for role in (FileRole.A, FileRole.B)
+                )
                 else "未配置模型，无法确定的字段需要人工确认。",
             )
+        resolved_mappings = tuple(mappings)
+        mapping_issues = validate_mappings(snapshots, resolved_mappings)
+        period = task.options.reconciliation_period
+        if period is None and not mapping_issues:
+            period = infer_reconciliation_period(snapshots, resolved_mappings)
+            if period is not None:
+                self.repository.record_event(
+                    task_id,
+                    "identify_fields",
+                    "completed",
+                    "已自动识别对账月份",
+                    f"根据 A 表明细日期确定为 {period}，未使用当前时间或文件名猜测年份。",
+                )
         options = TaskOptions(
-            reconciliation_period=task.options.reconciliation_period,
-            mappings=tuple(mappings),
+            reconciliation_period=period,
+            mappings=resolved_mappings,
             specification_aliases=task.options.specification_aliases,
             date_tolerance_days=task.options.date_tolerance_days,
         )
-        issues.extend(validate_mappings(snapshots, options.mappings))
+        issues.extend(mapping_issues)
         if options.reconciliation_period is None:
             issues.append(
                 Issue(code="PERIOD_REQUIRED", message="请提供明确的对账年月，例如 2026-07")
@@ -257,7 +296,10 @@ class PreparationSteps:
             )
             return
         self.repository.record_event(
-            task_id, "normalize_records", "completed", "A/B 明细标准化完成",
+            task_id,
+            "normalize_records",
+            "completed",
+            "A/B 明细标准化完成",
             f"A 表 {len(result.a_records)} 条，B 表 {len(result.b_records)} 条；"
             f"保留来源位置及原始数值，记录 {len(result.issues)} 项提示。",
         )
@@ -282,7 +324,10 @@ class PreparationSteps:
         baseline_ref = self.repository.write_bytes(task_id, f"{version}/c_baseline.xlsx", content)
         self.repository.write_model(task_id, f"{version}/audit.json", audit)
         self.repository.record_event(
-            task_id, "build_baseline", "completed", "C 初始底稿及清理审计已保存",
+            task_id,
+            "build_baseline",
+            "completed",
+            "C 初始底稿及清理审计已保存",
             "完整复制 A 工作簿，并按确认范围处理合并、底色及数值显示。",
         )
         self.repository.save_task(transition(task, TaskStatus.PREPARING, "build_b_index"))
@@ -290,7 +335,10 @@ class PreparationSteps:
             task_id, f"{version}/b_index.json", build_index(result.b_records)
         )
         self.repository.record_event(
-            task_id, "build_b_index", "completed", "B 查询索引已保存",
+            task_id,
+            "build_b_index",
+            "completed",
+            "B 查询索引已保存",
             f"索引引用 {len(result.b_records)} 条标准化记录，供后续匹配使用。",
         )
         self.repository.save_task(transition(task, TaskStatus.PREPARING, "publish_prepared"))

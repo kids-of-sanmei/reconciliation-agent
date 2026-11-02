@@ -22,7 +22,7 @@ from app.preparation.domain.models import (
     TaskStatus,
     TaskView,
 )
-from app.preparation.infrastructure.llm import StructuredMappingAdvisor
+from app.preparation.infrastructure.llm import OllamaMappingAdvisor, StructuredMappingAdvisor
 from app.preparation.infrastructure.storage import LocalTaskRepository
 from app.preparation.infrastructure.xlsx import XlsxGateway
 from app.preparation.ports import MappingAdvisor, WorkbookGateway
@@ -51,13 +51,11 @@ class PreparationService:
         gateway = workbook or XlsxGateway(
             max_archive_bytes=settings.max_archive_bytes, max_cells=settings.max_cells
         )
-        if (
-            advisor is None
-            and settings.llm_model
-            and settings.llm_api_key is not None
-            and settings.llm_api_key.get_secret_value()
-        ):
-            advisor = StructuredMappingAdvisor(settings)
+        if advisor is None and settings.llm_model:
+            if settings.llm_provider == "ollama":
+                advisor = OllamaMappingAdvisor(settings)
+            elif settings.llm_api_key is not None and settings.llm_api_key.get_secret_value():
+                advisor = StructuredMappingAdvisor(settings)
         self.steps = PreparationSteps(self.repository, gateway, advisor)
 
     def create(
@@ -200,8 +198,11 @@ class PreparationService:
                         graph.invoke(None, config)
                     else:
                         self.repository.record_event(
-                            task_id, "received", "started",
-                            "重新执行数据准备" if task.events and task.status != TaskStatus.RECEIVED
+                            task_id,
+                            "received",
+                            "started",
+                            "重新执行数据准备"
+                            if task.events and task.status != TaskStatus.RECEIVED
                             else "开始执行数据准备",
                         )
                         graph.invoke(

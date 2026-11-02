@@ -67,22 +67,36 @@ def build_profiles(snapshots: SourceSnapshots) -> TableProfiles:
         snapshots: 两个原始工作簿快照。
 
     Returns:
-        每张表最多 20 行、每行 24 个非空样例的摘要。
+        每张表头部最多 20 行、尾部最多 5 行，每行最多 24 个非空样例及对应公式。
     """
     profiles: list[SheetProfile] = []
     for workbook in snapshots.workbooks:
         for sheet in workbook.sheets:
             rows: dict[str, dict[str, str]] = {}
-            for cell in sheet.cells.values():
-                text = cell_text(cell)
-                if cell.row > 30 or text is None:
-                    continue
+            tail_rows: dict[str, dict[str, str]] = {}
+            formulas: dict[str, str] = {}
+            nonempty = sorted(
+                (
+                    cell
+                    for cell in sheet.cells.values()
+                    if cell_text(cell) not in {None, ""} or cell.formula is not None
+                ),
+                key=lambda cell: (cell.row, len(cell.column), cell.column),
+            )
+            tail_numbers = set(sorted({cell.row for cell in nonempty})[-5:])
+            for cell in nonempty:
+                text = cell_text(cell) or "[公式缺少缓存结果]"
                 key = str(cell.row)
-                if key not in rows and len(rows) >= 20:
-                    continue
-                row = rows.setdefault(key, {})
-                if len(row) < 24:
-                    row[cell.column] = text[:120]
+                for target, included in (
+                    (rows, cell.row <= 50 and (key in rows or len(rows) < 20)),
+                    (tail_rows, cell.row in tail_numbers),
+                ):
+                    if included:
+                        row = target.setdefault(key, {})
+                        if len(row) < 24:
+                            row[cell.column] = text[:120]
+                            if cell.formula is not None:
+                                formulas[cell.coordinate] = cell.formula[:200]
             profiles.append(
                 SheetProfile(
                     role=workbook.source_file.role,
@@ -90,6 +104,8 @@ def build_profiles(snapshots: SourceSnapshots) -> TableProfiles:
                     max_row=sheet.max_row,
                     merged_ranges=sheet.merged_ranges,
                     sample_rows=rows,
+                    tail_rows=tail_rows,
+                    sample_formulas=formulas,
                 )
             )
     return TableProfiles(sheets=tuple(profiles))

@@ -285,6 +285,9 @@ class XlsxGateway:
             kind=kind,
             value=None if formula is not None else value,
             formula=formula.text or "" if formula is not None else None,
+            shared_formula_index=(
+                formula.get("si") if formula is not None and formula.get("t") == "shared" else None
+            ),
             cached_value=value if formula is not None else None,
             cached_type=value_type if formula is not None else None,
             style_id=style_id,

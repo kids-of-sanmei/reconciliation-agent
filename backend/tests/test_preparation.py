@@ -124,7 +124,9 @@ def test_b_directions_duplicates_zero_and_month_scope(tmp_path: Path) -> None:
 def test_missing_period_resumes_after_service_restart(tmp_path: Path) -> None:
     """验证 SQLite 中断在服务重建后继续执行；tmp_path 为持久化目录。"""
     first = service_at(tmp_path)
-    task = first.create("a.xlsx", a_workbook(), "b.xlsx", b_workbook(), TaskOptions())
+    task = first.create(
+        "a.xlsx", a_workbook(missing_year=True), "b.xlsx", b_workbook(), TaskOptions()
+    )
     waiting = first.run(task.task_id)
     assert waiting.status == TaskStatus.NEEDS_INPUT
     assert any(issue.code == "PERIOD_REQUIRED" for issue in waiting.issues)
@@ -317,7 +319,9 @@ def test_date_and_decimal_parsing_retains_business_meaning() -> None:
 def test_source_change_during_confirmation_cannot_publish(tmp_path: Path) -> None:
     """验证等待确认期间来源变化会阻止发布；tmp_path 为隔离目录。"""
     service = service_at(tmp_path)
-    task = service.create("a.xlsx", a_workbook(), "b.xlsx", b_workbook(), TaskOptions())
+    task = service.create(
+        "a.xlsx", a_workbook(missing_year=True), "b.xlsx", b_workbook(), TaskOptions()
+    )
     assert service.run(task.task_id).status == TaskStatus.NEEDS_INPUT
     source = service.repository.path(task.task_id, "sources/input_b.xlsx")
     source.write_bytes(source.read_bytes() + b"changed")
@@ -334,7 +338,9 @@ def test_source_change_during_confirmation_cannot_publish(tmp_path: Path) -> Non
 def test_confirmation_replay_is_idempotent_and_timestamped(tmp_path: Path) -> None:
     """验证中断重放不会重复增加版本，审计保留时间；tmp_path 为隔离目录。"""
     service = service_at(tmp_path)
-    task = service.create("a.xlsx", a_workbook(), "b.xlsx", b_workbook(), TaskOptions())
+    task = service.create(
+        "a.xlsx", a_workbook(missing_year=True), "b.xlsx", b_workbook(), TaskOptions()
+    )
     assert service.run(task.task_id).status == TaskStatus.NEEDS_INPUT
     confirmation = Confirmation(
         actor="财务", reason="确认月份", options=TaskOptions(reconciliation_period="2026-07")
@@ -350,7 +356,9 @@ def test_confirmation_replay_is_idempotent_and_timestamped(tmp_path: Path) -> No
 def test_stale_confirmation_does_not_consume_checkpoint(tmp_path: Path) -> None:
     """验证过期版本确认会在消费检查点前拒绝；tmp_path 为隔离目录。"""
     service = service_at(tmp_path)
-    task = service.create("a.xlsx", a_workbook(), "b.xlsx", b_workbook(), TaskOptions())
+    task = service.create(
+        "a.xlsx", a_workbook(missing_year=True), "b.xlsx", b_workbook(), TaskOptions()
+    )
     assert service.run(task.task_id).status == TaskStatus.NEEDS_INPUT
     with pytest.raises(PreparationError, match="版本已过期"):
         service.run(
@@ -507,7 +515,8 @@ def test_valid_model_advice_is_validated_and_persisted(tmp_path: Path) -> None:
 
         def suggest(self, profiles: TableProfiles) -> MappingAdvice:
             """读取 profiles 结构摘要，返回符合源数据的 A 映射。"""
-            assert len(profiles.sheets) == 3
+            assert len(profiles.sheets) == 2
+            assert all(sheet.role == FileRole.A for sheet in profiles.sheets)
             mapping = SheetMapping.model_validate_json(
                 '{"role":"a","sheet_name":"业务底稿","header_row":2,"data_start_row":3,"data_end_row":6,"fields":{"date":"A","spec":"B","quantity":"C","unit_price":"D","amount":"E"}}'
             )

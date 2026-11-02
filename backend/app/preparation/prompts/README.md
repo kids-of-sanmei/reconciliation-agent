@@ -6,6 +6,7 @@
 | --- | --- |
 | `templates/field_mapping_system.md` | 角色、识别规则、业务边界及输出要求 |
 | `templates/field_mapping_user.md` | 输入说明及 `${profiles_json}` 占位符 |
+| `templates/field_mapping_repair_user.md` | 结构校验失败后的一次修正请求及 `${validation_errors_json}` |
 | `field_mapping.py` | 提示词标识、版本、资源绑定及类型化输入构建器 |
 | `base.py` | 包资源加载、变量校验、单次替换及内容摘要 |
 | `../infrastructure/llm.py` | 模型连接、消息转换、调用及结果类型检查 |
@@ -23,13 +24,15 @@
 
 ## 版本与调用追踪
 
-每次模型调用的运行名称为 `preparation.field_mapping`，调用 metadata 包含：
+兼容接口的每次模型调用运行名称为 `preparation.field_mapping`，调用 metadata 包含：
 
 - `prompt_id`：稳定的业务提示词标识。
 - `prompt_version`：本次使用的文案版本。
 - `prompt_template_sha256`：标识、版本及实际模板文本的内容摘要。
 
 摘要不包含业务输入，不同账单使用同一版文案时摘要相同；文案或版本变化后摘要变化。metadata 可供模型调用回调或链路追踪使用，目前不会额外写入任务的 `mapping_advice.json`。
+
+本地 Ollama 使用同一构建器和文案版本，直接调用原生 `/api/chat`。该原生协议不接收上述 LangChain metadata；业务产物仍只保存校验后的映射。Ollama 适配器将字段键显式列入 JSON Schema，以约束业务字段到列字母的方向，并在结构校验失败时最多追加一次修正请求。
 
 历史文案通过 Git 版本管理；版本号本身不是运行时历史版本选择器。提示词和文件内容保持一致后，才能通过版本及摘要定位实际调用。
 

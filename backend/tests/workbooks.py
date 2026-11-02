@@ -13,7 +13,11 @@ MAIN_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 
 
 def a_workbook(
-    *, formula: bool = False, unknown_headers: bool = False, epoch_1904: bool = False
+    *,
+    formula: bool = False,
+    unknown_headers: bool = False,
+    epoch_1904: bool = False,
+    missing_year: bool = False,
 ) -> bytes:
     """创建含合并日期、退货、零金额、样式及附件表的 A 输入。
 
@@ -21,6 +25,7 @@ def a_workbook(
         formula: 第一条金额是否使用没有缓存的公式。
         unknown_headers: 是否使用需要人工或模型识别的陌生字段名。
         epoch_1904: 是否使用 1904 日期系统。
+        missing_year: 是否移除所有完整年份证据，供人工期间确认回归使用。
 
     Returns:
         可由真实 Excel 库打开的工作簿字节。
@@ -39,7 +44,13 @@ def a_workbook(
         else ["字段甲", "字段乙", "字段丙", "字段丁", "字段戊"]
     )
     sheet.append(
-        [datetime(2026, 7, 1), "支架站脚款", 462, 15.769826, "=C3*D3" if formula else 7285.659612]
+        [
+            "7月1日" if missing_year else datetime(2026, 7, 1),
+            "支架站脚款",
+            462,
+            15.769826,
+            "=C3*D3" if formula else 7285.659612,
+        ]
     )
     sheet.append([None, "补发件", 0, 0, 0])
     sheet.merge_cells("A3:A4")

@@ -85,6 +85,7 @@ class CellSnapshot(DomainModel):
     kind: Literal["blank", "string", "number", "boolean", "date", "formula", "error"]
     value: str | None = None
     formula: str | None = None
+    shared_formula_index: str | None = None
     cached_value: str | None = None
     cached_type: str | None = None
     style_id: int = 0
@@ -369,6 +370,8 @@ class SheetProfile(DomainModel):
     max_row: int
     merged_ranges: tuple[str, ...]
     sample_rows: dict[str, dict[str, str]]
+    tail_rows: dict[str, dict[str, str]] = Field(default_factory=dict)
+    sample_formulas: dict[str, str] = Field(default_factory=dict)
 
 
 class TableProfiles(DomainModel):

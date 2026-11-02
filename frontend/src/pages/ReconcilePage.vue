@@ -47,7 +47,7 @@ function onReset() {
           <UploadCard v-model="fileB" label="B 表 · 系统出入库明细" hint="选择系统导出的出入库账表" :disabled="submitting" />
         </div>
         <form class="start-form" @submit.prevent="onStart">
-          <label class="period-field">对账月份 <span>可稍后补充</span><input v-model="period" type="month" min="0001-01" max="9999-12" :disabled="submitting" /></label>
+          <label class="period-field">对账月份 <span>留空自动识别</span><input v-model="period" type="month" min="0001-01" max="9999-12" :disabled="submitting" /></label>
           <button class="btn btn-primary" type="submit" :disabled="!canStart"><Loader2 v-if="submitting" :size="16" class="spin" aria-hidden="true" />{{ submitting ? '正在接入任务…' : '开始数据准备' }}</button>
         </form>
         <p class="scope-note">当前支持 .xlsx，单文件最大 20 MB。正式匹配与最终核查将在后续阶段执行。</p>
@@ -70,6 +70,7 @@ function onReset() {
         <div class="task-meta">
           <p>任务编号 <code>{{ task.task_id }}</code></p>
           <p v-for="source in task.sources" :key="source.role">{{ source.role === 'a' ? 'A 表' : source.role === 'b' ? 'B 表' : '参考表' }} <span>{{ source.original_name }}</span></p>
+          <p v-if="task.options.reconciliation_period">对账月份 <span>{{ task.options.reconciliation_period }}</span></p>
           <p v-if="lastSyncedAt" class="sync-note">{{ processing ? '自动更新中' : '最近同步' }} · {{ time(lastSyncedAt) }}<span>刷新页面可继续查看此任务</span></p>
         </div>
         <ProgressFlow :task="task" />
