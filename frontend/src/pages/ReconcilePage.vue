@@ -32,7 +32,6 @@ function onReset() {
         <span class="logo-mark" aria-hidden="true">
           <ArrowLeftRight :size="22" :stroke-width="2" />
         </span>
-        <h1 class="title">清账</h1>
         <p class="subtitle">上传两份 Excel 账单，一键生成对账报表</p>
       </header>
 
@@ -130,13 +129,6 @@ function onReset() {
   color: #fff;
   margin-bottom: 24px;
   box-shadow: var(--shadow-card);
-}
-
-.title {
-  font-size: 40px;
-  font-weight: 700;
-  letter-spacing: 0;
-  margin-bottom: 12px;
 }
 
 .subtitle {
@@ -238,10 +230,6 @@ function onReset() {
 
   .masthead {
     margin-bottom: 56px;
-  }
-
-  .title {
-    font-size: 32px;
   }
 
   .upload-grid {
