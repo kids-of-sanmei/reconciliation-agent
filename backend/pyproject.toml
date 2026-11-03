@@ -27,6 +27,10 @@ init_typed = true
 init_forbid_extra = true
 warn_required_dynamic_aliases = true
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+
 [dependency-groups]
 dev = [
     "httpx>=0.28.1",

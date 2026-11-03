@@ -11,6 +11,8 @@ class UploadResult(BaseModel):
     file_id: str = Field(description="本次上传生成的唯一文件编号")
     filename: str = Field(description="去除路径后的原始文件名")
     size: int = Field(gt=0, description="实际保存的文件大小，单位为字节")
+    structure_filename: str = Field(description="仅包含表头结构的 JSON 文件名")
+    structure_url: str = Field(description="表头 JSON 的下载地址，相对于 API 所在站点")
 
 
 class UploadErrorResponse(BaseModel):

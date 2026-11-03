@@ -7,23 +7,26 @@ import ResultPanel from '../components/ResultPanel.vue'
 import TaskHistory from '../components/TaskHistory.vue'
 import TaskConfirmation from '../components/TaskConfirmation.vue'
 import MatchingPanel from '../components/MatchingPanel.vue'
+import HeaderJsonTestPanel from '../components/HeaderJsonTestPanel.vue'
 import { useReconcile } from '../composables/useReconcile'
 import { STAGE_LABELS, STATUS_LABELS } from '../lib/preparation'
 
 const fileA = ref<File | null>(null)
 const fileB = ref<File | null>(null)
 const period = ref('')
+const testingHeaders = ref(false)
 const restoreId = ref('')
 const { task, errorMsg, submitting, syncing, processing, lastSyncedAt, start, loadTask, refresh, retry, confirm, reset } = useReconcile()
-const canStart = computed(() => !!fileA.value && !!fileB.value && !submitting.value)
+const canStart = computed(() => !!fileA.value && !!fileB.value && !submitting.value && !testingHeaders.value)
 const time = (value: string) => new Intl.DateTimeFormat('zh-CN', {
   timeZone: 'Asia/Shanghai', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
 }).format(new Date(value))
 
 function onStart() {
-  if (fileA.value && fileB.value) void start(fileA.value, fileB.value, period.value)
+  if (canStart.value && fileA.value && fileB.value) void start(fileA.value, fileB.value, period.value)
 }
 function onReset() {
+  if (testingHeaders.value) return
   fileA.value = null
   fileB.value = null
   period.value = ''
@@ -44,14 +47,15 @@ function onReset() {
         <h1 id="intake-title">上传账表，查看真实处理过程</h1>
         <p class="intro">从文件解析到生成 C 初始底稿，每个动作都会留下时间和结果。</p>
         <div class="upload-grid">
-          <UploadCard v-model="fileA" label="A 表 · 业务底稿" hint="选择客户或供应商的对账底稿" :disabled="submitting" />
-          <UploadCard v-model="fileB" label="B 表 · 系统出入库明细" hint="选择系统导出的出入库账表" :disabled="submitting" />
+          <UploadCard v-model="fileA" label="A 表 · 业务底稿" hint="选择客户或供应商的对账底稿" :disabled="submitting || testingHeaders" />
+          <UploadCard v-model="fileB" label="B 表 · 系统出入库明细" hint="选择系统导出的出入库账表" :disabled="submitting || testingHeaders" />
         </div>
+        <HeaderJsonTestPanel :file-a="fileA" :file-b="fileB" :disabled="submitting" @busy-change="testingHeaders = $event" />
         <form class="start-form" @submit.prevent="onStart">
           <label class="period-field">对账月份 <span>留空自动识别</span><input v-model="period" type="month" min="0001-01" max="9999-12" :disabled="submitting" /></label>
           <button class="btn btn-primary" type="submit" :disabled="!canStart"><Loader2 v-if="submitting" :size="16" class="spin" aria-hidden="true" />{{ submitting ? '正在接入任务…' : '开始数据准备' }}</button>
         </form>
-        <p class="scope-note">当前支持 .xlsx，单文件最大 20 MB。正式匹配与最终核查将在后续阶段执行。</p>
+        <p class="scope-note">单文件最大 20 MB。可先生成表头 JSON 查看解析结果。</p>
       </section>
 
       <div v-if="errorMsg" class="request-error" role="alert">

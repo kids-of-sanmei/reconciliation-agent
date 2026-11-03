@@ -15,3 +15,11 @@ class EmptyUploadError(UploadError):
 
 class UploadSizeLimitError(UploadError):
     """实际读取的文件大小超过允许的上限。"""
+
+
+class InvalidExcelError(UploadError):
+    """文件内容不是能够正常读取的 Excel 工作簿。"""
+
+
+class InvalidHeaderRangeError(UploadError):
+    """指定的表头行范围无效或无法完整展开。"""
