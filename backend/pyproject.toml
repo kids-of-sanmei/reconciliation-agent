@@ -1,12 +1,38 @@
 [project]
 name = "backend"
 version = "0.1.0"
-description = "Excel file upload API"
+description = "Excel upload and structure extraction API"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.141.1",
+    "openpyxl>=3.1.5",
     "pydantic>=2.13.5",
     "python-multipart>=0.0.20",
     "uvicorn>=0.52.4",
+    "xlrd>=2.0.2",
+]
+
+[tool.mypy]
+python_version = "3.13"
+files = ["app", "main.py"]
+plugins = ["pydantic.mypy"]
+strict = true
+disallow_any_explicit = true
+disallow_any_unimported = true
+warn_unreachable = true
+
+[tool.pydantic-mypy]
+init_typed = true
+init_forbid_extra = true
+warn_required_dynamic_aliases = true
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "mypy>=2.4.1",
+    "pytest>=8.3.5",
+    "types-openpyxl>=3.1.5",
+    "types-xlrd>=2.0.0",
+    "xlwt>=1.3.0",
 ]
